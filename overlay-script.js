@@ -14,7 +14,7 @@
 
     console.log("✅ Netflix Ratings Overlay (Modern UI) loaded");
 
-    const API_KEY = 'afad9ecc'; // your OMDb key
+    const API_KEY = ''; // your OMDb key
     const CACHE_TTL = 1000 * 60 * 60 * 24;
     const DEBOUNCE_MS = 500;
 
