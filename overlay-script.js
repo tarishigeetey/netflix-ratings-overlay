@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Netflix Ratings Overlay
 // @namespace    http://tampermonkey.net/
-// @version      1.8
-// @description  Show IMDb ⭐ & Rotten Tomatoes 🍅 ratings on Netflix (auto-updates when selecting new movie)
+// @version      2.1
+// @description  Show IMDb ⭐ & Rotten Tomatoes 🍅 ratings on Netflix with modern styling
 // @match        https://www.netflix.com/*
 // @grant        GM_xmlhttpRequest
 // @connect      www.omdbapi.com
@@ -12,16 +12,16 @@
 (function() {
     'use strict';
 
-    console.log("✅ Netflix Ratings Overlay script loaded");
+    console.log("✅ Netflix Ratings Overlay (Modern UI) loaded");
 
-    const API_KEY = ''; // your OMDb key
+    const API_KEY = 'afad9ecc'; // your OMDb key
     const CACHE_TTL = 1000 * 60 * 60 * 24;
     const DEBOUNCE_MS = 500;
 
     let lastTitle = '';
     let debounceTimer;
 
-    const CACHE_KEY = 'nf_ratings_cache_v7';
+    const CACHE_KEY = 'nf_ratings_cache_modern';
     const loadCache = () => JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
     const saveCache = (c) => localStorage.setItem(CACHE_KEY, JSON.stringify(c));
     const getCached = (k) => {
@@ -47,45 +47,63 @@
 
     function findNetflixTitle() {
         const header = document.querySelector('.previewModal--section-header strong');
-        if (header && header.textContent.trim()) {
-            return header.textContent.trim();
-        }
-        return null;
+        return header && header.textContent.trim() ? header.textContent.trim() : null;
     }
 
     function createBadge() {
         const div = document.createElement('div');
         div.className = 'nf-ratings-overlay';
         div.style.cssText = `
-            margin-top: 8px;
-            font-size: 16px;
-            color: #e5e5e5;
-            background: rgba(0,0,0,0.7);
-            padding: 8px 14px;
-            border-radius: 16px;
-            display: inline-block;
-            font-family: Netflix Sans, Helvetica, Arial, sans-serif;
+            margin-top: 14px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 14px;
+            font-family: 'Netflix Sans', Helvetica, Arial, sans-serif;
+            font-weight: 500;
         `;
         return div;
     }
 
+    function styledTag(bg, fg, text) {
+        return `
+          <span style="
+            background:${bg};
+            color:${fg};
+            padding:6px 12px;
+            border-radius:20px;
+            font-weight:600;
+            font-size:13px;
+            min-width:60px;
+            text-align:center;
+            box-shadow:0 2px 6px rgba(0,0,0,0.4);
+          ">
+            ${text}
+          </span>`;
+    }
+
     function updateBadge(badge, data) {
         if (!data || data.Response === 'False') {
-            badge.innerHTML = '❌ Ratings not found';
+            badge.innerHTML = styledTag("#444", "#ccc", "❌ No ratings");
             return;
         }
+
         let html = '';
+
         if (data.imdbRating && data.imdbRating !== 'N/A') {
-            html += `⭐ ${data.imdbRating}/10 `;
+            html += styledTag("#f5c518", "#000", `⭐ IMDb ${data.imdbRating}`);
         }
+
         if (data.Ratings) {
             const rt = data.Ratings.find(r => r.Source === 'Rotten Tomatoes');
             if (rt && rt.Value !== 'N/A') {
-                if (html) html += ' | ';
-                html += `🍅 ${rt.Value}`;
+                const score = parseInt(rt.Value);
+                const color = score >= 60 ? "#e63946" : "#6c757d";
+                html += styledTag(color, "#fff", `🍅 ${rt.Value}`);
             }
         }
-        badge.innerHTML = html || '❌ Ratings not available';
+
+        badge.innerHTML = html || styledTag("#444", "#ccc", "❌ Not available");
     }
 
     function cleanTitle(title) {
@@ -133,19 +151,16 @@
         lastTitle = raw;
         console.log("📺 New Netflix title:", raw);
 
-        let badge = document.querySelector('.nf-ratings-overlay');
-        if (!badge) {
-            badge = createBadge();
-            const container = document.querySelector('.previewModal--detailsMetadata-info')
-                           || document.querySelector('.previewModal--section-header');
-            if (container) {
-                container.appendChild(badge);
-            } else {
-                document.body.appendChild(badge);
-            }
-        }
+        // remove old badge
+        const oldBadge = document.querySelector('.nf-ratings-overlay');
+        if (oldBadge) oldBadge.remove();
 
-        badge.innerHTML = '⏳ Fetching ratings...';
+        const badge = createBadge();
+        const container = document.querySelector('.previewModal--detailsMetadata-info')
+                       || document.querySelector('.previewModal--section-header');
+        (container || document.body).appendChild(badge);
+
+        badge.innerHTML = styledTag("#333", "#aaa", "⏳ Loading...");
         fetchRatings(raw, (data) => updateBadge(badge, data));
     }
 
@@ -154,8 +169,13 @@
         debounceTimer = setTimeout(processNetflixTitle, DEBOUNCE_MS);
     }
 
-    // 🔍 Watch for Netflix modal open/close
     const observer = new MutationObserver(() => {
+        const modal = document.querySelector('.previewModal--container');
+        if (!modal) {
+            lastTitle = '';
+            const oldBadge = document.querySelector('.nf-ratings-overlay');
+            if (oldBadge) oldBadge.remove();
+        }
         debounceProcess();
     });
     observer.observe(document.body, { childList: true, subtree: true });
